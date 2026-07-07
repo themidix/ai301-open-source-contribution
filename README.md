@@ -7,7 +7,7 @@ Tracking issues tackled, implementation plans, and pull requests across multiple
 | Project | Issue | Status | Link |
 |---|---|---|---|
 | Frank!Framework | [#4739 — Larva wait-for-condition mechanism](https://github.com/frankframework/frankframework/issues/4739) | Assigned / In Progress | [View Issue](https://github.com/frankframework/frankframework/issues/4739) |
-| _Project 2 name_ | _#Issue number — short title_ | _Not started / In Progress / Merged_ | _[View Issue](#)_ |
+
 
 ---
 
