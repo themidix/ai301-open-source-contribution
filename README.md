@@ -40,27 +40,4 @@ The most promising approach is to extend Larva's existing per-step action model 
 
 ---
 
-## Contribution 2: _Project Name_
-
-**Repository:** _[org/project](#)_
-
-**Issue:** _[#issue-number — issue title](#)_
-
-### Problem Summary
-
-_Describe the bug or feature request, and the expected vs. actual behavior._
-
-### My Understanding of the Fix
-
-_Describe the proposed approach, relevant modules/classes, and reasoning for the chosen fix._
-
-### Status
-
-- [ ] Repository forked on GitHub
-- [ ] Feature branch created
-- [ ] Comment posted on the issue expressing interest in being assigned
-- [ ] Implementation
-
----
-
 *Part of the CodePath AI301 open-source contribution assignment.*
