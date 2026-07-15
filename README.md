@@ -141,6 +141,8 @@ The most promising approach is to extend Larva's existing per-step action model 
 
 Based on maintainer/community feedback on the issue (from nielsm5), the wait condition is being generalized to support an **expression** (`waitfor.xPath` / `waitfor.jPath`) evaluated against the actual result on each poll, rather than only a full-content comparison — better suited to async cases where only part of the result matters (e.g. "does a row with type=E exist" rather than a byte-for-byte match). If no expression is given, the mechanism falls back to full-result comparison.
 
+**Discussion thread:** [Interest comment](https://github.com/frankframework/frankframework/issues/4739#issuecomment-4890740305) → [nielsm5's expression suggestion](https://github.com/frankframework/frankframework/issues/4739#issuecomment-4890740305) → [Design-alignment reply](https://github.com/frankframework/frankframework/issues/4739#issuecomment-4976264913)
+
 ### Reproduction Steps
 
 1. Create a Larva scenario where step N triggers a message that is asynchronously written to a table (e.g. via `ManageDatabase`), simulating the Heinenoord case — an adapter times out and an error-store row is written on a background thread.
@@ -161,6 +163,7 @@ Based on maintainer/community feedback on the issue (from nielsm5), the wait con
 - [x] Repository forked on GitHub
 - [x] Feature branch created: `feature/4739-larva-waitfor-condition`
 - [x] Comment posted on the issue expressing interest in being assigned
+- [x] Follow-up reply posted, aligning on expression-based `waitfor` design with maintainer feedback
 - [x] Reproduction steps and solution plan documented (Phase 2)
 - [ ] Implementation
 - [ ] Tests
