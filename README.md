@@ -36,6 +36,64 @@ The Create Discount Component form (`DiscountMonetaryComponentForm.tsx`) had thr
 - Updated the Save button's `disabled` condition from `!isDirty` to `!isDirty || !isValid`, so it only becomes clickable once the form is genuinely valid.
 - Added a new Playwright end-to-end spec (`discountMonetaryComponentCreate.spec.ts`) covering: Save disabled on empty form, whitespace-only title rejection, empty amount/factor rejection, out-of-range factor rejection, and a full successful-creation happy path.
 
+### Solution Plan (Phase 2)
+
+All three bugs are isolated to one file: `src/pages/Facility/settings/billing/discount/discount-components/DiscountMonetaryComponentForm.tsx`
+
+**Fix 1 — Whitespace-only Title bypass**
+Root cause: `z.string().min(1)` counts raw characters, so `"   "` (3 spaces) passes with length 3.
+Fix: Add `.trim()` before `.min(1)` — matches the pattern already used in the sibling `DiscountCodeForm.tsx`.
+```diff
+- title: z.string().min(1, { message: t("field_required") }),
++ title: z.string().trim().min(1, { message: t("field_required") }),
+```
+
+**Fix 2 — Raw Zod type error on numeric fields**
+Root cause: The `onChange` handler passes `null` when a number input is cleared (`e.target.value || null`). Since `zodDecimal()` is a `z.string()` chain, Zod emits its internal type error `"Expected string, received null"` before any custom message can fire.
+Fix: Wrap with `z.preprocess(val => val ?? "", ...)` to coerce `null → ""`, so the existing empty-string guard inside `zodDecimal` fires and emits `t("field_required")`.
+```diff
+- factor: zodDecimal({ min: 0, max: 100 }).optional().nullable(),
+- amount: zodDecimal({ min: 0 }).optional().nullable(),
++ factor: z.preprocess(
++   (val) => val ?? "",
++   zodDecimal({ min: 0, max: 100, message: t("field_required") })
++ ).optional().nullable(),
++ amount: z.preprocess(
++   (val) => val ?? "",
++   zodDecimal({ min: 0, message: t("field_required") })
++ ).optional().nullable(),
+```
+
+**Fix 3 — Save button enabled on invalid form**
+Root cause: `disabled={!form.formState.isDirty}` only checks whether a field was touched, not whether the form is actually valid.
+Fix: Add an `isValid` check.
+```diff
+- disabled={!form.formState.isDirty}
++ disabled={!form.formState.isDirty || !form.formState.isValid}
+```
+
+**Fix 4 — New Playwright tests**
+New file: `tests/facility/settings/billing/discount/discountMonetaryComponentCreate.spec.ts`
+Covers:
+- Whitespace-only title shows `"This field is required"`
+- Empty Amount shows friendly error, not raw Zod type message
+- Empty Factor shows friendly error
+- Save button disabled on invalid form
+- Save button enabled on valid form
+
+### Implementation Notes (Phase 3)
+
+What was implemented this phase:
+- ✅ Added `.trim()` to the `title` field schema — whitespace-only input now correctly triggers "This field is required"
+- ✅ Wrapped numeric fields with `z.preprocess(val => val ?? "")` — empty Amount/Factor now shows "This field is required" instead of the raw Zod type error
+- ✅ Fixed the Save button to be disabled when the form is invalid (`!isDirty || !isValid`)
+- ✅ Added a new Playwright test spec covering all validation scenarios
+
+Testing notes:
+- 🧪 All three bugs verified fixed locally
+- 🧪 Existing `DiscountCodeForm` tests unaffected
+- 🧪 New Playwright spec covers whitespace title, empty numeric fields, and Save button state
+
 ### Review Status
 
 The PR received automated review (CodeRabbit, Greptile) and a maintainer review from `nihal467`, which requested changes:
@@ -49,9 +107,11 @@ The PR received automated review (CodeRabbit, Greptile) and a maintainer review 
 
 - [x] Repository forked on GitHub
 - [x] Feature branch created: `issues/14040/fix-discount-component-validation`
-- [x] Fix implemented and pushed
+- [x] Solution plan documented (Phase 2)
+- [x] Fix implemented and pushed (Phase 3)
 - [x] Pull request opened (#16473)
 - [x] Playwright tests added
+- [x] Verified locally (all three bugs fixed, existing tests unaffected)
 - [ ] Requested changes addressed (nullish coalescing fix, disabled-state test assertions, remove stray file)
 - [ ] PR approved and merged
 
