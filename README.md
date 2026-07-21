@@ -150,13 +150,32 @@ Based on maintainer/community feedback on the issue (from nielsm5), the wait con
 3. Run the scenario: the query executes once, finds no row yet (the async write hasn't completed), and the step fails — even though the row appears moments later.
 4. Confirm the only current workaround is a fixed-duration `sleep` step before the query, and that shortening it introduces flakiness while lengthening it slows the suite.
 
-### Solution Plan
+### Plan Review & Validation (Phase 2.5)
 
-1. **`Step.java`** — add `getWaitForTimeoutMillis()`, `getWaitForIntervalMillis()`, and `getWaitForExpression()` to parse and validate the new `waitfor.*` properties, with scenario-load-time validation.
-2. **`ScenarioRunner.java`** — add `executeActionReadStepWithRetry()`, invoked only when `waitfor.timeout > 0`. Polls `executeRead()` on the configured interval; checks the condition silently until met or timed out; reports the final outcome exactly once via the existing `compareResult()` path.
-3. **`LarvaTool.java`** — extract a pure `computeComparison()` helper from `compareResult()` for reuse as a silent equality check during polling; add `evaluateWaitForExpression()` for the XPath/JSONPath case.
-4. **Tests** — parameterized `Step` property tests; `LarvaTool` tests for the extracted comparison logic; new `ScenarioRunnerTest` covering retry-until-match, timeout, and expression-based match.
-5. **Docs** — update the Frank!Manual Larva properties reference with a Heinenoord-style worked example.
+Before implementing, I validated the original solution plan against the actual `larva` and `core` source (not just the issue text). This surfaced one unconfirmed design assumption and one real correctness bug, plus a significant simplification opportunity:
+
+**Unresolved design question.** My first comment on the issue asked maintainers to sanity-check the step-property approach against a new-loop-syntax alternative, since it affects public Larva syntax. Re-reading nielsm5's reply carefully: it only addresses *what to check* (expression vs. full-content match), not *where the retry mechanism lives*. That fork is still open — worth one more confirmation comment before deep implementation.
+
+**Retry-safety bug in the original plan.** A single generic `executeActionReadStepWithRetry()` applied to *any* read step is unsafe:
+- `SenderAction` backed by `FixedQuerySender`/`DelaySender` re-executes its query fresh on every `executeRead()` call — safe to retry, and exactly the Heinenoord/IBISSTORE case.
+- `SenderAction` for any other sender drains a one-shot `SenderThread` result and nulls it out after the first call — a second call **throws** `SenderException`, it doesn't return "not yet."
+- `PullingListenerAction.executeRead()` dequeues a **new** message from the listener on every call — retrying it would silently discard non-matching messages from the queue.
+
+  → **Fix:** scope `waitfor` to query-style, idempotent reads only, validated at scenario-load time, not discovered at runtime.
+
+**Simplification found.** `FileListener.java` (same module) already implements this exact pattern (`timeout`/`interval` fields + polling loop) for the filesystem-wait case — the new query-side mechanism should mirror that shape rather than invent a different one. And `IfPipe.java` (core) already implements "evaluate an xpath/jsonpath expression against a message, get true/false," backed by `TransformerPool` (XPath) and `JsonUtil` (JsonPath, via `com.jayway.jsonpath`, already transitively available from `core`) — so `evaluateWaitForExpression()` should delegate to that existing, tested machinery instead of new bespoke expression code, and no new Maven dependency is needed.
+
+### Solution Plan (Revised)
+
+**Scope for this PR (MVP):** `waitfor.timeout` / `waitfor.interval` / `waitfor.xPath`, restricted to read steps backed by `FixedQuerySender`. `waitfor.jPath` and non-query action types are deferred to a follow-up — smaller review surface, and it's the part the issue actually asks for.
+
+1. **`Step.java`** — add `getWaitForTimeoutMillis()` / `getWaitForIntervalMillis()` / `getWaitForXPath()`, read via `getStepParameters()` (not the `step + ".xxx"` string-concat pattern used for `diffType` in `LarvaTool.java` — that concatenates `Step.toString()`, a display string, not a real property key, and looks like a pre-existing bug, not a template to copy). Defaults derived from `LarvaConfig`, not new hardcoded constants.
+2. **Scenario-load-time validation** — reject `waitfor.*` set on a step whose target isn't a query-style read, with a clear error, instead of failing at runtime with a confusing exception or silently dropping queue messages.
+3. **`LarvaTool.java`** — extract a pure `computeComparison()` from `compareResult()` (no observer callbacks, no autosave side effects) for silent use while polling; keep `compareResult()` as the one-time final reporting call. Add `evaluateWaitForExpression()` delegating to `TransformerPool`/`JsonUtil`, mirroring `IfPipe`'s match semantics for consistency with #10798.
+4. **`ScenarioRunner.java`** — add a retry path in `executeActionReadStep()`, gated on `waitfor.timeout > 0` and only reachable for validated action types. Poll silently on the interval; call `compareResult()` exactly once at the end (match or timeout).
+5. **Tests** — `StepTest` additions for the new getters/validation; `LarvaToolTest` proving the extracted comparison is behavior-preserving for the existing (non-`waitfor`) path across all `diffType` branches; a **new** `ScenarioRunnerTest` (this class currently has zero test coverage) covering both the existing single-shot baseline and the new retry-until-match/timeout behavior.
+6. **Docs** — Frank!Manual update with a Heinenoord-style worked example.
+7. **Process** — add a `RELEASES.md` entry under "Upcoming" per `CONTRIBUTING.md`; confirm copyright header years on touched files.
 
 ### Status
 
@@ -165,6 +184,8 @@ Based on maintainer/community feedback on the issue (from nielsm5), the wait con
 - [x] Comment posted on the issue expressing interest in being assigned
 - [x] Follow-up reply posted, aligning on expression-based `waitfor` design with maintainer feedback
 - [x] Reproduction steps and solution plan documented (Phase 2)
+- [x] Plan validated against actual source; revised to fix a retry-safety bug and narrow MVP scope (Phase 2.5)
+- [ ] Follow-up comment confirming step-property vs. loop-syntax design choice with maintainers
 - [ ] Implementation
 - [ ] Tests
 - [ ] Pull request opened
