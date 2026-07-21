@@ -7,7 +7,7 @@ Tracking issues tackled, implementation plans, and pull requests across multiple
 | Project | Issue / PR | Status | Link |
 |---|---|---|---|
 | care_fe (ohcnetwork) | [#14040 — Discount component validation bugs](https://github.com/ohcnetwork/care_fe/issues/14040) → [PR #16473](https://github.com/ohcnetwork/care_fe/pull/16473) | Changes Requested | [View PR](https://github.com/ohcnetwork/care_fe/pull/16473) |
-| Frank!Framework | [#4739 — Larva wait-for-condition mechanism](https://github.com/frankframework/frankframework/issues/4739) | Assigned / In Progress | [View Issue](https://github.com/frankframework/frankframework/issues/4739) |
+| Frank!Framework | [#4739 — Larva wait-for-condition mechanism](https://github.com/frankframework/frankframework/issues/4739) → [PR #11310](https://github.com/frankframework/frankframework/pull/11310) | Draft PR — Awaiting Design Feedback | [View PR](https://github.com/frankframework/frankframework/pull/11310) |
 
 ---
 
@@ -125,6 +125,8 @@ The PR received automated review (CodeRabbit, Greptile) and a maintainer review 
 
 **Branch:** [`feature/4739-larva-waitfor-condition`](https://github.com/themidix/frankframework/tree/feature/4739-larva-waitfor-condition)
 
+**Pull Request:** [#11310 — Larva: add waitfor.timeout/interval/xPath step properties (#4739)](https://github.com/frankframework/frankframework/pull/11310) (draft)
+
 ### Problem Summary
 
 Frank!Framework's Larva integration-test tool executes scenario steps (read/write against senders, listeners, databases, filesystems, etc.) as single, synchronous actions and compares the result against an expected file. There is currently no way to express "wait until this condition becomes true, polling with a timeout" — for example, waiting for an asynchronously-written row to appear in an error/message store after an adapter times out.
@@ -185,10 +187,10 @@ Before implementing, I validated the original solution plan against the actual `
 - [x] Follow-up reply posted, aligning on expression-based `waitfor` design with maintainer feedback
 - [x] Reproduction steps and solution plan documented (Phase 2)
 - [x] Plan validated against actual source; revised to fix a retry-safety bug and narrow MVP scope (Phase 2.5)
-- [ ] Follow-up comment confirming step-property vs. loop-syntax design choice with maintainers
-- [ ] Implementation
-- [ ] Tests
-- [ ] Pull request opened
+- [x] Follow-up comment confirming step-property vs. loop-syntax design choice with maintainers
+- [x] Implementation
+- [x] Tests
+- [x] Pull request opened (#11310, draft — pending maintainer feedback on the step-property vs. loop-syntax question)
 
 ---
 
