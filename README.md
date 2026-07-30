@@ -2,58 +2,21 @@
 
 Tracking issues tackled, implementation plans, and pull requests across multiple open-source projects — CodePath AI301.
 
-## Phase I Submission
+## Contribution Index
 
-### Setup Verification
+| Project | Issue / PR | Status | Link |
+| --- | --- | --- | --- |
+| care_fe (ohcnetwork) | [#14040 — Discount component validation bugs](https://github.com/ohcnetwork/care_fe/issues/14040) → [PR #16473](https://github.com/ohcnetwork/care_fe/pull/16473) | Changes Requested | [View PR](https://github.com/ohcnetwork/care_fe/pull/16473) |
+| Frank!Framework | [#4739 — Larva wait-for-condition mechanism](https://github.com/frankframework/frankframework/issues/4739) → [PR #11310](https://github.com/frankframework/frankframework/pull/11310) | Draft PR — Awaiting Design Feedback | [View PR](https://github.com/frankframework/frankframework/pull/11310) |
+
+---
+
+## Assignment Setup (Phase I)
 
 - **GitHub account:** [github.com/themidix](https://github.com/themidix)
 - **Forked project:** [themidix/care_fe](https://github.com/themidix/care_fe) — fork of [ohcnetwork/care_fe](https://github.com/ohcnetwork/care_fe)
 - **Contribution README repo:** [themidix/ai301-open-source-contribution](https://github.com/themidix/ai301-open-source-contribution) (this repo, public)
-
-### Issue Selection
-
-- **Issue:** [ohcnetwork/care_fe#14040 — Discount Monetary Component form validation bugs](https://github.com/ohcnetwork/care_fe/issues/14040)
-  - Status at time of selection: **open**, unassigned, labeled `good first issue`, no linked PR from another contributor.
-  - Project health: `care_fe` is an actively maintained project (commits merging weekly), has a working `README.md` with local dev setup instructions, and the issue itself is a self-contained bug report with no unresolved sub-tasks.
-- **Introduction comment:** _pending — see note below._
-
-> **Note:** I have not yet posted an introduction comment on the issue thread itself (the issue currently has zero comments). Draft comment, ready to post from my own GitHub account:
->
-> > Hi! I'm working through this issue as part of a course open-source contribution assignment. I've reproduced all three validation bugs described above (whitespace-only title, raw Zod error on cleared Amount/Factor, Save enabled on an invalid form) in `DiscountMonetaryComponentForm.tsx` and have a fix + Playwright coverage ready. Opening a PR shortly — happy to adjust based on any maintainer feedback.
-
-### Why I Chose This Issue
-
-_Draft — personalize before submitting:_
-
-I picked this issue because it sits squarely in a stack I already know — React, TypeScript, `react-hook-form`, and `zod` — so I could focus on the mechanics of a real-world OSS workflow (forking, branching, PR review) instead of fighting an unfamiliar framework. At the same time, form-validation edge cases (whitespace bypass, `null` vs `""` handling in schema chains, gating a submit button on `isValid` and not just `isDirty`) are a pattern I run into often and wanted to get sharper on. `care_fe` is also a large, actively maintained healthcare EMR codebase, which gave me a chance to practice reading and navigating a production-scale repo I didn't write, rather than a toy project.
-
-### Problem Summary (Issue #14040)
-
-The Create Discount Component form (`DiscountMonetaryComponentForm.tsx`) in `care_fe` has three related validation bugs: a whitespace-only title (`"   "`) passes the `min(1)` check and gets saved as if it were valid, clearing the Amount or Factor field surfaces Zod's raw internal type error instead of a friendly "This field is required" message, and the Save button stays clickable even when the form is in a known-invalid state. This matters because it lets hospital billing staff create malformed discount components (blank titles, missing amounts) and exposes a confusing, non-localized error message instead of guided validation feedback. I chose it because the root cause was traceable to a single file, the fix pattern (`.trim()`, `z.preprocess`, an `isValid` gate) was already precedented elsewhere in the codebase (`DiscountCodeForm.tsx`), and it let me ship a complete, testable fix within the scope of Phase I.
-
-### Check-in
-
-- [ ] Check-in form submitted on the Course Portal with "Phase I Complete" marked — _submit separately on the course portal; not trackable from this repo._
-
-### Stretch / Bonus
-
-- **Files/modules involved:** `src/pages/Facility/settings/billing/discount/discount-components/DiscountMonetaryComponentForm.tsx` (schema + Save button logic), with the working `.trim()` pattern already precedented in the sibling `src/pages/Facility/settings/billing/discount/discount-codes/DiscountCodeForm.tsx`, and a new Playwright spec at `tests/facility/settings/billing/discount/discountMonetaryComponentCreate.spec.ts`.
-- **Maintainer/related links:** [PR #16473](https://github.com/ohcnetwork/care_fe/pull/16473) review feedback from `nihal467` and `NikhilA8606`; automated review from CodeRabbit/Greptile flagging the `??` vs `||` nullish-coalescing bug and a `max_applicable` null-guard gap on the edit flow.
-- **What "fixed" looks like (acceptance criteria):**
-  1. Submitting a title of only whitespace shows "This field is required" and does not save.
-  2. Clearing Amount or Factor shows "This field is required," never a raw Zod/Pydantic type error.
-  3. The Save button is disabled whenever `isDirty && !isValid`, and enabled once the form is valid.
-  4. The same guards apply symmetrically on both the create and edit flows (currently the edit flow still needs the `max_applicable` null-guard per Greptile's review).
-  5. New Playwright coverage passes for all of the above, and existing `DiscountCodeForm` tests remain unaffected.
-
----
-
-## Contribution Index
-
-| Project | Issue / PR | Status | Link |
-|---|---|---|---|
-| care_fe (ohcnetwork) | [#14040 — Discount component validation bugs](https://github.com/ohcnetwork/care_fe/issues/14040) → [PR #16473](https://github.com/ohcnetwork/care_fe/pull/16473) | Changes Requested | [View PR](https://github.com/ohcnetwork/care_fe/pull/16473) |
-| Frank!Framework | [#4739 — Larva wait-for-condition mechanism](https://github.com/frankframework/frankframework/issues/4739) → [PR #11310](https://github.com/frankframework/frankframework/pull/11310) | Draft PR — Awaiting Design Feedback | [View PR](https://github.com/frankframework/frankframework/pull/11310) |
+- **Check-in:** submitted separately on the Course Portal with "Phase I Complete" marked — not trackable from this repo.
 
 ---
 
@@ -67,6 +30,15 @@ The Create Discount Component form (`DiscountMonetaryComponentForm.tsx`) in `car
 
 **Branch:** [`themidix:issues/14040/fix-discount-component-validation`](https://github.com/themidix/care_fe/tree/issues/14040/fix-discount-component-validation)
 
+### Issue Selection
+
+- Status at time of selection: **open**, unassigned, labeled `good first issue`, no linked PR from another contributor.
+- Project health: `care_fe` is an actively maintained project (commits merging weekly), has a working `README.md` with local dev setup instructions, and the issue itself is a self-contained bug report with no unresolved sub-tasks.
+
+### Why I Chose This Issue
+
+I picked this issue because it sits squarely in a stack I already know — React, TypeScript, `react-hook-form`, and `zod` — so I could focus on the mechanics of a real-world OSS workflow (forking, branching, PR review) instead of fighting an unfamiliar framework. At the same time, form-validation edge cases (whitespace bypass, `null` vs `""` handling in schema chains, gating a submit button on `isValid` and not just `isDirty`) are a pattern I run into often and wanted to get sharper on. `care_fe` is also a large, actively maintained healthcare EMR codebase, which gave me a chance to practice reading and navigating a production-scale repo I didn't write, rather than a toy project.
+
 ### Problem Summary
 
 The Create Discount Component form (`DiscountMonetaryComponentForm.tsx`) had three related validation bugs:
@@ -74,6 +46,8 @@ The Create Discount Component form (`DiscountMonetaryComponentForm.tsx`) had thr
 1. **Whitespace-only title bypass** — `z.string().min(1)` counts raw characters, so a title of `"   "` passed validation instead of being rejected as empty.
 2. **Raw Zod type error surfaced to the user** — clearing the Amount or Factor input passes `null` into a `z.string()` schema chain, which throws Zod's internal `"Expected string, received null"` error before any custom, user-friendly message can run.
 3. **Save button enabled on an invalid form** — the button was only gated on `!isDirty` (was a field touched?), not on whether the form was actually valid, so it could be clicked while validation errors were still showing.
+
+This matters because it let hospital billing staff create malformed discount components (blank titles, missing amounts) and exposed a confusing, non-localized error message instead of guided validation feedback.
 
 ### Fix Summary
 
