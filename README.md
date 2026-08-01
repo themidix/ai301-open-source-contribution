@@ -26,6 +26,11 @@ Tracking issues tackled, implementation plans, and pull requests across multiple
 
 - **Check-in:** submitted separately on the Course Portal with "Phase III Complete" marked — not trackable from this repo.
 
+## Assignment Setup (Phase IV)
+
+- **Check-in:** submitted separately on the Course Portal with "Phase IV Complete" marked — not trackable from this repo.
+- **Reviewer notified:** maintainer `nihal467` has reviewed and commented on the PR multiple times through Phase IV (most recently 2026-07-31); no separate assignment/notification action was needed since review was already active.
+
 ---
 
 ## Contribution 1: care_fe (OHC Network)
@@ -189,6 +194,41 @@ The PR received automated review (CodeRabbit, Greptile) and a maintainer review 
   - Several Playwright assertions were written to `click()` the Save button in states where it's expected to be disabled (post-fix); these need to assert `toBeDisabled()` instead of clicking.
   - Remove `CONTRIBUTING_README.md`, a personal working file that was accidentally included in the PR diff and doesn't belong in the shared repository.
 
+### Pull Request Status (Phase IV)
+
+- **PR:** [#16473](https://github.com/ohcnetwork/care_fe/pull/16473), open against `develop` (the repo's default branch), `MERGEABLE`.
+- **Review decision:** `CHANGES_REQUESTED` — most recent maintainer feedback (`nihal467`, 2026-07-31) asks for the current CI test failure to be fixed.
+- **CI status:** failing. The Playwright job's shard 2/3 currently fails 3 specs in `discountMonetaryComponentCreate.spec.ts`: `empty discount amount should show friendly error, not 'Expected number, received null'`, `empty discount factor should show friendly error, not 'Expected number, received null'`, and `should not allow submission with invalid factor value`. All other CI checks (lint, unit tests, build, other shards, CodeQL) pass.
+- **Fixed during this phase:** the PR description had `Closes #issue_14040`, which GitHub does not recognize as an issue reference (confirmed via the GraphQL API — `closingIssuesReferences` was empty). Corrected to `Closes #14040`, which now correctly links and will auto-close the issue on merge. Also fixed ~34 stray backslashes before backticks in the description (`` \` `` instead of `` ` ``) that were breaking inline code rendering — formatting only, no content change.
+
+### Maintainer Feedback Log (Phase IV)
+
+| Date | Feedback | Response | Commit |
+| --- | --- | --- | --- |
+| 2026-06-23 | CodeRabbit / Greptile (automated): `\|\|` vs `??` on the `factor` zero value; 3 Playwright specs clicking a Save button expected to be disabled; `z.preprocess` short-circuited by `.nullable()`; stray `CONTRIBUTING_README.md` committed; toast-text assertion too strict | Addressed in follow-up commits | `f679617`, `d4df789` |
+| 2026-06-26 | `nihal467` (maintainer): "update the issue number and do the checklist / resolve the AI comments" | Merge checklist completed; AI-reviewer comments addressed in following commits | `f679617` |
+| 2026-06-29 – 2026-06-30 | CodeRabbit (automated): persisted `0` lost on edit-flow init; Save button permanently disabled because `isValid` never becomes `true` in `onSubmit` mode | Confirmed fix inline ("Yes, fixed") | `b7b2fdf` |
+| 2026-07-14 | `NikhilA8606` (maintainer): "Remove all the unwanted comments in this pr" (two inline comments) | Comments removed | `a8035bb` |
+| 2026-07-22 | Greptile (automated): the `max_applicable` null-guard was applied to `CreateDiscountMonetaryComponentSheet.tsx` but not to `EditDiscountMonetarySheet.tsx`, so the edit flow can still send an incomplete `discount_configuration` | **Not yet addressed** | — |
+| 2026-07-31 | `nihal467` (maintainer): "fix the test failure" — CI is failing 3 Playwright specs in shard 2/3 | **Not yet addressed** | — |
+
+### Acceptance Criteria (Phase IV)
+
+- [x] Submitting a title of only whitespace shows "This field is required" and does not save.
+- [ ] Clearing Amount or Factor shows "This field is required," never a raw Zod/Pydantic type error — **currently failing in CI** (see the two "empty discount..." specs above); this is the item `nihal467` flagged on 2026-07-31.
+- [x] The Save button is disabled whenever `isDirty && !isValid`, and enabled once the form is valid.
+- [ ] The same guards apply symmetrically on both the create and edit flows — **not yet true**: the `max_applicable` null-guard is only on the create sheet, per Greptile's 2026-07-22 finding.
+- [ ] New Playwright coverage passes for all of the above, and existing `DiscountCodeForm` tests remain unaffected — **not yet true**: 3 of 7 new specs are currently failing in CI.
+
+### Before/After Evidence
+
+- **Screenshots:** three before/after screenshots are attached directly to the [PR description](https://github.com/ohcnetwork/care_fe/pull/16473) (form validation states and the create flow). No new screenshots were captured for this phase — I don't have a running instance of `care_fe` in this environment, so I'm linking to the existing evidence rather than fabricating new images.
+- **Test output:** the CI failure log for the current run is the most current, verifiable evidence of test status — see [Pull Request Status (Phase IV)](#pull-request-status-phase-iv) above for the specific failing specs and run link (`https://github.com/ohcnetwork/care_fe/pull/16473/checks`).
+
+### Learnings & Reflections (Phase IV)
+
+This PR has now gone through five distinct review rounds over about five weeks (2026-06-23 through 2026-07-31), from two human maintainers and two automated reviewers (CodeRabbit, Greptile), and it's still not merged. The biggest lesson wasn't any single bug — it was how much the `||` vs `??` and `.nullable()`/`.preprocess()` ordering issues kept resurfacing in slightly different forms across rounds; a schema-level invariant ("zero is valid, only `null`/`undefined` means empty") needed to be enforced once, centrally, rather than patched at each call site as reviewers found the next place it leaked through. The current CI failure is the same category of issue again: fixing one validation path can silently break the test doubles written against the old behavior, which is why "all tests pass locally" at commit time isn't the same guarantee as "CI is green" days later after `develop` has moved and the test environment differs slightly. Going forward, I'd write the schema invariant as a single tested helper up front instead of inlining it three times, and I'd treat a maintainer's "fix the test failure" the same way I treat a correctness bug — as a signal to re-run the full suite against the exact CI conditions before pushing, not just the tests I think are related.
+
 ### Status
 
 - [x] Repository forked on GitHub
@@ -197,8 +237,10 @@ The PR received automated review (CodeRabbit, Greptile) and a maintainer review 
 - [x] Fix implemented and pushed (Phase 3)
 - [x] Pull request opened (#16473)
 - [x] Playwright tests added
-- [x] Verified locally (all three bugs fixed, existing tests unaffected)
-- [x] Requested changes addressed (nullish coalescing fix in `b7b2fdf`, disabled-state test assertions, stray file removed in `a8035bb`)
+- [x] Verified locally (all three bugs fixed, existing tests unaffected) — as of the commits through `a8035bb`; see the CI status note above for the current (2026-07-31) regression
+- [x] Multiple rounds of requested changes addressed (nullish coalescing fix in `b7b2fdf`, disabled-state test assertions, stray file removed in `a8035bb`, unwanted comments removed in `a8035bb`)
+- [x] PR description corrected to properly close issue #14040 and fixed formatting (Phase IV)
+- [ ] Outstanding: fix the 3 failing Playwright specs and add the missing edit-flow `max_applicable` null-guard (requested 2026-07-31 and 2026-07-22, respectively)
 - [ ] PR approved and merged
 
 ---
