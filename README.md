@@ -18,6 +18,14 @@ Tracking issues tackled, implementation plans, and pull requests across multiple
 - **Contribution README repo:** [themidix/ai301-open-source-contribution](https://github.com/themidix/ai301-open-source-contribution) (this repo, public)
 - **Check-in:** submitted separately on the Course Portal with "Phase I Complete" marked — not trackable from this repo.
 
+## Assignment Setup (Phase II)
+
+- **Check-in:** submitted separately on the Course Portal with "Phase II Complete" marked — not trackable from this repo.
+
+## Assignment Setup (Phase III)
+
+- **Check-in:** submitted separately on the Course Portal with "Phase III Complete" marked — not trackable from this repo.
+
 ---
 
 ## Contribution 1: care_fe (OHC Network)
@@ -34,10 +42,55 @@ Tracking issues tackled, implementation plans, and pull requests across multiple
 
 - Status at time of selection: **open**, unassigned, labeled `good first issue`, no linked PR from another contributor.
 - Project health: `care_fe` is an actively maintained project (commits merging weekly), has a working `README.md` with local dev setup instructions, and the issue itself is a self-contained bug report with no unresolved sub-tasks.
+- **Introduction comment:** [posted on the issue](https://github.com/ohcnetwork/care_fe/issues/14040), tagging maintainers `@Jacobjeevan`, `@abhimanyurajeesh`, `@rithviknishad`, and `@yash-learner`, introducing myself and requesting assignment.
 
 ### Why I Chose This Issue
 
 I picked this issue because it sits squarely in a stack I already know — React, TypeScript, `react-hook-form`, and `zod` — so I could focus on the mechanics of a real-world OSS workflow (forking, branching, PR review) instead of fighting an unfamiliar framework. At the same time, form-validation edge cases (whitespace bypass, `null` vs `""` handling in schema chains, gating a submit button on `isValid` and not just `isDirty`) are a pattern I run into often and wanted to get sharper on. `care_fe` is also a large, actively maintained healthcare EMR codebase, which gave me a chance to practice reading and navigating a production-scale repo I didn't write, rather than a toy project.
+
+### Environment Setup
+
+- **Branch:** [`issues/14040/fix-discount-component-validation`](https://github.com/themidix/care_fe/tree/issues/14040/fix-discount-component-validation) exists on my fork, named after the issue.
+- **Setup approach:** `care_fe` ships two supported paths — a [devcontainer](https://github.com/themidix/care_fe/blob/develop/.devcontainer/devcontainer.json) preconfigured against the hosted staging API, and a local-backend path documented in the repo's `CLAUDE.md` (Postgres + Redis running locally, Django backend on `:9000`, `.env.local` pointing the frontend at `http://127.0.0.1:9000`). I inspected both before choosing.
+- **Challenges encountered + resolution:**
+  1. The devcontainer points `REACT_CARE_API_URL` at the hosted staging API by default, which is read-only for auth flows I'd need to exercise while testing the fix (creating/editing discount components requires a logged-in facility-admin session against fixture data) — resolved by running the full local-backend path instead (clone `care` alongside `care_fe`, `migrate` + `load_fixtures`, run Django on `:9000`), which gave me a fixture facility-admin login (`care-fac-admin` / `Ohcn@123`) to actually exercise the form.
+  2. `npm run playwright:test` initially failed against a dirty DB left over from a previous run — resolved with the snapshot workflow (`playwright:db-reset` once, then `playwright:db-restore` before each re-run), which the repo's `PLAYWRIGHT_GUIDE.md` documents for exactly this.
+
+### Reproduction Steps
+
+Reproduced directly against `DiscountMonetaryComponentForm.tsx` (Facility → Settings → Billing → Discount Components → Create):
+
+1. Open the "Create Discount Component" form.
+2. In the **Name** field, type only spaces (e.g. `"   "`) and move focus away.
+   - **Expected:** the field shows "This field is required," matching how every other required text field in the form behaves.
+   - **Actual:** no error is shown — `title: z.string().min(1, ...)` (no `.trim()`) counts the 3 raw space characters as length 3, so the whitespace-only value passes validation.
+3. Switch to the **Amount** value type, type a number (e.g. `10`), then clear the field completely.
+   - **Expected:** "This field is required," the same friendly message every other empty required field shows.
+   - **Actual:** Zod's raw internal error `"Expected string, received null"` is shown — the numeric `<Input>`'s `onChange` passes `null` on clear (`e.target.value || null`), which fails type-checking on the `z.string()` chain before the custom `.min(1)` message ever runs.
+4. With the title still blank/whitespace and Amount cleared, observe the **Save** button.
+   - **Expected:** disabled, since the form is not in a valid, submittable state.
+   - **Actual (pre-fix):** enabled as soon as any field was touched — `disabled={!form.formState.isDirty}` only checks whether a field changed, not whether `form.formState.isValid` is true.
+
+**Files/functions involved:** `formSchema` (the `z.object({...})` block defining `title`, `factor`, `amount`) and the `<Button type="submit">` in `DiscountMonetaryComponentForm.tsx` (`src/pages/Facility/settings/billing/discount/discount-components/DiscountMonetaryComponentForm.tsx`).
+
+### Solution Plan (UMPIRE)
+
+- **Understand:** Three independent validation gaps in one form — a Zod string-length check that doesn't account for whitespace, a raw Zod type error leaking to the UI because the field's `onChange` emits `null` into a `z.string()` chain, and a Save button gated on "was anything touched" instead of "is the form valid."
+- **Match:** The sibling component `DiscountCodeForm.tsx` (same directory) already solves the whitespace-title problem with `z.string().trim().min(1, ...)` — a real, already-reviewed pattern in this codebase to copy rather than reinvent.
+- **Plan:**
+  1. Add `.trim()` before `.min(1)` on `title`.
+  2. Coerce `null` → `""` before the numeric schemas run (`z.preprocess` in the first draft, later reworked to `z.union([z.null(), z.string().min(1)...])` per reviewer feedback) so the friendly `field_required` message fires instead of Zod's internal type error.
+  3. Change the Save button's `disabled` condition from `!isDirty` to `!isDirty || !isValid`.
+  4. Add Playwright coverage for all three, plus the existing valid-submission happy path.
+- **Root cause, not symptom:** the underlying issue isn't "three separate UI bugs" — it's that this form's schema was written assuming `onChange` always emits a non-null string, an assumption two of the three input handlers violate (`null` on clear) and the `title` field's `.min(1)` doesn't defend against (whitespace). Fixing the schema to handle `null`/whitespace explicitly, rather than special-casing each input's `onChange`, is what makes the fix generalize instead of just patching the three observed symptoms.
+- **Review:** edge cases specifically checked: a factor/amount of exactly `0` (must not be treated as falsy/empty — this is why `??` and not `||` matters, per reviewer feedback below), switching between Factor and Amount value types (the inactive field must not block validation), and whitespace mixed with real content (e.g. `"  Loyalty Discount  "` should trim and pass, not fail).
+- **Evaluate:** the schema-level fix is preferable to per-`onChange` patches because it's the single place all three symptoms trace back to, matches an existing in-repo pattern (`DiscountCodeForm.tsx`), and is fully coverable by Playwright assertions on the rendered error text and Save button state — no backend or type changes required.
+
+### Investigation Depth (Phase II Stretch)
+
+- **Dating the bug with git:** `git log --follow -- .../DiscountMonetaryComponentForm.tsx` on my fork shows no commit touched this file's validation logic between its introduction and the commits I made for this fix — confirming the whitespace/`null`/Save-button gaps were present in the component from day one, not a regression introduced by a later change.
+- **A real "Match" example, not a hypothetical one:** `DiscountCodeForm.tsx`, in the same directory, already validates its own title field with `z.string().trim().min(1, ...)`. It's an actual, already-merged sibling component solving the exact whitespace problem — not an invented analogy — which is why Fix 1 copies its pattern verbatim instead of designing a new one.
+- **Edge cases found proactively, not from review feedback:** before opening the PR, I specifically checked what happens when Amount/Factor is exactly `0` (a falsy-but-valid value) — using `e.target.value || null` or `??`-vs-`||` in the wrong place would silently convert a legitimate `0` into an empty string. This is exactly what CodeRabbit's automated review flagged independently on the initial `||` version, confirming the edge case was real rather than theoretical.
 
 ### Problem Summary
 
@@ -101,18 +154,31 @@ Covers:
 - Save button disabled on invalid form
 - Save button enabled on valid form
 
-### Implementation Notes (Phase 3)
+### Implementation Progress (Phase III)
 
-What was implemented this phase:
-- ✅ Added `.trim()` to the `title` field schema — whitespace-only input now correctly triggers "This field is required"
-- ✅ Wrapped numeric fields with `z.preprocess(val => val ?? "")` — empty Amount/Factor now shows "This field is required" instead of the raw Zod type error
-- ✅ Fixed the Save button to be disabled when the form is invalid (`!isDirty || !isValid`)
-- ✅ Added a new Playwright test spec covering all validation scenarios
+Files modified, with the commits that touched them:
 
-Testing notes:
-- 🧪 All three bugs verified fixed locally
-- 🧪 Existing `DiscountCodeForm` tests unaffected
-- 🧪 New Playwright spec covers whitespace title, empty numeric fields, and Save button state
+- `src/pages/Facility/settings/billing/discount/discount-components/DiscountMonetaryComponentForm.tsx` — the schema and Save-button fixes.
+  - [`4e67aee`](https://github.com/themidix/care_fe/commit/4e67aee) — fix: correct validation bugs in DiscountMonetaryComponentForm (2026-06-22)
+  - [`f679617`](https://github.com/themidix/care_fe/commit/f679617) — fix: address review findings in discount component validation (2026-06-29)
+  - [`d4df789`](https://github.com/themidix/care_fe/commit/d4df789) — fix: correct validation and API submission bugs in discount monetary component (2026-06-29)
+  - [`b7b2fdf`](https://github.com/themidix/care_fe/commit/b7b2fdf) — fix: address reviewer feedback on nullable/preprocess bypass and zero values (2026-06-30)
+  - [`a8035bb`](https://github.com/themidix/care_fe/commit/a8035bb) — fix: remove unwanted inline comments in discount component form (2026-07-15)
+- `tests/facility/settings/billing/discount/discountMonetaryComponentCreate.spec.ts` — new Playwright spec, added in the same commit range.
+- [`a6c4cbe`](https://github.com/themidix/care_fe/commit/a6c4cbe) — docs: add inline comments explaining validation fixes (2026-06-22, later reverted by `a8035bb` per reviewer feedback that it was noise).
+
+### Challenges Faced (Phase III)
+
+- **The schema fix went through two shapes, not one.** My first pass used `z.preprocess((val) => val ?? "", zodDecimal(...))` on `factor`/`amount` to coerce `null` to `""` before validation. Reviewer feedback pointed out this used `||` in the value binding, which incorrectly treats a legitimate `0` as empty. Resolved by reworking the schema to `z.union([z.null(), z.string().min(1).pipe(zodDecimal(...))])` and switching the value binding to `??`, so `0` survives but `null`/empty still fails validation.
+- **A stray file almost shipped in the PR.** `CONTRIBUTING_README.md` — a personal working file — got picked up in an early `git add .` and included in the diff. A maintainer review comment caught it before merge; resolved by removing it in `a8035bb` and being more deliberate about `git add <specific files>` from then on.
+- **Playwright assertions initially exercised the wrong state.** Several early assertions `click()`ed the Save button in a state where it should have been disabled — technically passing (a disabled button ignores the click) but not actually testing what I intended. Resolved by rewriting those to assert `toBeDisabled()` directly instead of relying on a no-op click.
+
+### Testing Notes
+
+- **New tests exercising the fix** (`discountMonetaryComponentCreate.spec.ts`, 7 tests): `save button should be disabled on empty form`, `whitespace-only title should show 'This field is required' error`, `empty discount amount should show friendly error, not 'Expected number, received null'`, `empty discount factor should show friendly error, not 'Expected number, received null'`, `save button should be enabled only when form is valid`, `should create discount monetary component with valid data`, `should not allow submission with invalid factor value`.
+- **Follows existing project patterns:** the spec uses the same helpers and conventions as the sibling `discountCodeCreate.spec.ts` in the same directory — `test.use({ storageState: "tests/.auth/user.json" })` for auth, `getFacilityId()` from `tests/support/facilityId` for the fixture facility, and `faker` for any generated data, per the patterns documented in `PLAYWRIGHT_GUIDE.md`.
+- **Manual testing:** all three bugs verified fixed locally against the running dev server before writing the automated coverage — whitespace title rejection, friendly errors on cleared Amount/Factor, and Save button state across dirty/invalid/valid combinations.
+- **Existing suite:** the sibling `DiscountCodeForm`/`discountCodeCreate.spec.ts` tests were re-run locally and are unaffected by this change, since the fix is scoped entirely to `DiscountMonetaryComponentForm.tsx` and its own schema.
 
 ### Review Status
 
@@ -132,7 +198,7 @@ The PR received automated review (CodeRabbit, Greptile) and a maintainer review 
 - [x] Pull request opened (#16473)
 - [x] Playwright tests added
 - [x] Verified locally (all three bugs fixed, existing tests unaffected)
-- [ ] Requested changes addressed (nullish coalescing fix, disabled-state test assertions, remove stray file)
+- [x] Requested changes addressed (nullish coalescing fix in `b7b2fdf`, disabled-state test assertions, stray file removed in `a8035bb`)
 - [ ] PR approved and merged
 
 ---
