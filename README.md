@@ -287,12 +287,43 @@ Based on maintainer/community feedback on the issue (from nielsm5), the wait con
 
 **Discussion thread:** [Interest comment](https://github.com/frankframework/frankframework/issues/4739#issuecomment-4890740305) → [nielsm5's expression suggestion](https://github.com/frankframework/frankframework/issues/4739#issuecomment-4890740305) → [Design-alignment reply](https://github.com/frankframework/frankframework/issues/4739#issuecomment-4976264913)
 
+### Environment Setup
+
+- **Branch:** [`feature/4739-larva-waitfor-condition`](https://github.com/themidix/frankframework/tree/feature/4739-larva-waitfor-condition) on my fork, named after the issue.
+- **Setup approach:** `frankframework` has no dedicated `larva`-module README or devcontainer, so setup was pieced together from three sources: the repo's [`CONTRIBUTING.md`](https://github.com/frankframework/frankframework/blob/master/CONTRIBUTING.md) (points to [Frank!Runner](https://github.com/wearefrank/frank-runner) or IDE-based development via Eclipse/IntelliJ), the root `pom.xml` (Maven multi-module build, `maven.compiler.target=21` / `maven.compiler.source=25`, Lombok, Error Prone + NullAway + JSpecify for nullability checking), and the `.github/workflows/full-maven-build.yml` CI workflow to confirm the exact JDK version and build command CI actually uses, rather than guessing from the docs alone.
+- **Challenges encountered + resolution:**
+  1. After the initial implementation, Codacy's PMD `NPathComplexity` check flagged the extracted `computeComparison()` method at 294 against a threshold of 200 — it had inherited all the branching previously split across `compareResult()`/`reportFailedCompare()`. Resolved by further extracting `jsonPrettyOrOriginal()`, `compareXml()`, and `compareText()` into their own small methods, each independently readable, with no behavior change (verified against the existing `LarvaToolTest` regression coverage). ([`a7965bd`](https://github.com/themidix/frankframework/commit/a7965bd))
+  2. While verifying that fix, `testRetriesUntilXPathExpressionMatches` flaked once in a full-suite run (expected `RESULT_OK`, got `RESULT_ERROR`). Root cause was unrelated to the complexity refactor: a 2000ms `waitfor.timeout` left no margin for the one-time cost of `TransformerPool`/XSLT-engine classloading the first time `evaluateWaitForExpression()` runs in a test JVM, so the retry loop's deadline could be exceeded before a second poll attempt landed. Resolved by bumping the xPath-based tests to a 10000ms timeout (interval unchanged at 10ms) — fast in the common case, with headroom for cold-start cost. ([`5938402`](https://github.com/themidix/frankframework/commit/5938402))
+
 ### Reproduction Steps
 
 1. Create a Larva scenario where step N triggers a message that is asynchronously written to a table (e.g. via `ManageDatabase`), simulating the Heinenoord case — an adapter times out and an error-store row is written on a background thread.
-2. Add a subsequent step that immediately queries for that row.
-3. Run the scenario: the query executes once, finds no row yet (the async write hasn't completed), and the step fails — even though the row appears moments later.
-4. Confirm the only current workaround is a fixed-duration `sleep` step before the query, and that shortening it introduces flakiness while lengthening it slows the suite.
+   - **Expected:** the framework provides some way to wait for that row to appear before the next step checks for it.
+   - **Actual:** no such mechanism exists — the only primitive available is a fixed-duration `sleep` step.
+2. Add a subsequent step that immediately queries for that row (e.g. `SELECT * FROM IBISSTORE WHERE TYPE = 'E'`), with no wait step in between.
+   - **Expected:** Larva should support a step that polls until the row appears or a timeout elapses, so the test passes as soon as the row is actually written.
+   - **Actual:** the query executes exactly once, synchronously, via `ScenarioRunner.executeActionReadStep()` — there is no retry path in the code at all, so the test's timing depends entirely on how fast the async write happens to complete.
+3. Run the scenario as written (no `sleep`, no wait step).
+   - **Expected:** the test passes once the async write completes, regardless of exactly how long that takes.
+   - **Actual:** the query finds no row yet (the async write hasn't completed) and the step fails immediately — even though the row appears moments later. Confirmed by reading `ScenarioRunner.executeActionReadStep()`: the single `read()` call's result is compared once, with no loop.
+4. Add a fixed-duration `sleep` step before the query (today's only workaround), then try shortening and lengthening it.
+   - **Expected:** a "wait for condition" primitive shouldn't need manual tuning to avoid this trade-off.
+   - **Actual:** confirmed the trade-off is real — shortening the `sleep` reintroduces the same intermittent failure from step 3 (flaky under load), while lengthening it removes the flakiness but adds fixed dead time to every run of the suite, regardless of how fast the write actually completes.
+
+### Solution Plan (UMPIRE)
+
+- **Understand:** Larva read steps execute once, synchronously, and compare the result immediately — there's no mechanism to wait for an asynchronous side effect (e.g. an error-store row written on a background thread after a timeout) to actually land before checking for it. The only existing workaround, a fixed `sleep` step, forces a choice between flaky (too short) and slow (too long); neither is correct because the real completion time varies.
+- **Match:** Two real, already-merged precedents in this exact module, found by reading the current source and its history (not invented analogies):
+  - `LarvaActionFactory.getTimeoutMillis()` / `AbstractLarvaAction.timeoutMillis` (added in [#10118](https://github.com/frankframework/frankframework/pull/10118), merged 2025-12-10) already establishes the pattern of reading a per-action property (`timeout`) at scenario-load time and threading it through to the action — the same shape `waitfor.timeout`/`waitfor.interval` needs, just for a different purpose (upper-bound timeout vs. retry-until-match).
+  - `SenderAction.shouldExecuteSenderInLarvaThread()` (same PR) already special-cases `FixedQuerySender` specifically because its read can be safely re-executed, which independently corroborates — from a maintainer-authored, merged change, not just my own reasoning — that scoping `waitfor` to query-style, re-executable reads is the right boundary.
+- **Plan:**
+  1. Add `waitfor.timeout` / `waitfor.interval` / `waitfor.xPath` properties to `Step.java`, read via `getStepParameters()`.
+  2. Reject `waitfor.*` at scenario-load time (not runtime) on any step whose action isn't backed by `FixedQuerySender`/`DelaySender`.
+  3. Extract a pure `computeComparison()` from `LarvaTool.compareResult()` for silent use while polling; add `evaluateWaitForExpression()` delegating to the existing `TransformerPool`/`JsonUtil` machinery (mirroring `IfPipe`), rather than new expression-evaluation code.
+  4. Add the retry loop in `ScenarioRunner.executeActionReadStep()`, gated on `waitfor.timeout > 0`; call `compareResult()` exactly once at the end.
+  5. Cover all of the above with `StepTest`, `LarvaToolTest`, and a new `ScenarioRunnerTest` (previously zero coverage).
+- **Root cause, not symptom:** the underlying gap isn't "Larva lacks a wait-for-row feature" — it's that `ScenarioRunner`'s read-step execution model has exactly one code path (read once, compare once) with no notion of "not yet, try again," and that model is safe to extend generically only for the subset of read actions that are idempotent (safe to call more than once). Files to modify: `larva/src/main/java/org/frankframework/larva/Step.java`, `larva/src/main/java/org/frankframework/larva/LarvaTool.java`, `larva/src/main/java/org/frankframework/larva/ScenarioRunner.java`, and (validation only) `larva/src/main/java/org/frankframework/larva/actions/SenderAction.java` / `PullingListenerAction.java`.
+- **Evaluate:** extending the existing single-shot path with a gated retry loop, restricted at load-time to the known-safe action types, reuses `IfPipe`'s expression semantics and #10118's property-threading pattern instead of inventing new mechanisms — smallest change that generalizes correctly, rather than a special-cased fix for just the Heinenoord scenario.
 
 ### Plan Review & Validation (Phase 2.5)
 
@@ -308,6 +339,12 @@ Before implementing, I validated the original solution plan against the actual `
   → **Fix:** scope `waitfor` to query-style, idempotent reads only, validated at scenario-load time, not discovered at runtime.
 
 **Simplification found.** `FileListener.java` (same module) already implements this exact pattern (`timeout`/`interval` fields + polling loop) for the filesystem-wait case — the new query-side mechanism should mirror that shape rather than invent a different one. And `IfPipe.java` (core) already implements "evaluate an xpath/jsonpath expression against a message, get true/false," backed by `TransformerPool` (XPath) and `JsonUtil` (JsonPath, via `com.jayway.jsonpath`, already transitively available from `core`) — so `evaluateWaitForExpression()` should delegate to that existing, tested machinery instead of new bespoke expression code, and no new Maven dependency is needed.
+
+### Investigative Depth (Phase II Stretch)
+
+- **Dating and contextualizing with `git log`:** ran `gh api repos/frankframework/frankframework/commits?path=...` against `Step.java` and `ScenarioRunner.java` rather than relying on the issue text alone, and found [#10118 "Make Larva respect timeouts for test steps"](https://github.com/frankframework/frankframework/pull/10118) (merged 2025-12-10) — a recent, merged change touching the exact same files this plan needs to modify. That's what surfaced the `LarvaActionFactory.getTimeoutMillis()` precedent cited above in **Match**; without checking file history directly, I'd have designed the property-reading mechanism from scratch instead of following an already-reviewed, already-merged pattern in the same module.
+- **A "Match" example verified from the actual diff, not assumed from a filename:** I read #10118's real diff (`gh pr diff 10118`) rather than just noting FileListener.java existed. That's what confirmed `SenderAction.shouldExecuteSenderInLarvaThread()` already special-cases `FixedQuerySender` for exactly the "is this read idempotent" reason my retry-safety analysis independently arrived at — an existing maintainer decision that corroborates the plan's scoping, not just an analogous pattern.
+- **Edge case found proactively, from reading current source rather than from review feedback:** #10118 also added a `TimeoutGuard` inside `PullingListenerAction.executeRead()` (an overall per-read timeout, unrelated to `waitfor`). Since our branch is based on `develop` post-#10118, any `waitfor` retry loop around a read action needs to account for that existing guard rather than assume the read path is timeout-free — a constraint that only exists because of a change merged after the issue was filed, and one I wouldn't have known about without checking the current state of the file instead of just the original issue description.
 
 ### Solution Plan (Revised)
 
