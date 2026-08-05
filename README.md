@@ -214,6 +214,7 @@ The PR received automated review (CodeRabbit, Greptile) and a maintainer review 
 | 2026-07-14 | `NikhilA8606` (maintainer): "Remove all the unwanted comments in this pr" (two inline comments) | Comments removed | `a8035bb` |
 | 2026-07-22 | Greptile (automated): the `max_applicable` null-guard was applied to `CreateDiscountMonetaryComponentSheet.tsx` but not to `EditDiscountMonetarySheet.tsx`, so the edit flow can still send an incomplete `discount_configuration` | Fixed | `b7438f1` |
 | 2026-07-31 | `nihal467` (maintainer): "fix the test failure" — CI is failing 3 Playwright specs in shard 2/3 | Root cause found (`z.union` swallowing validation messages) and fixed. Pushed 2026-08-03; as of 2026-08-04 CI has not run yet — it's held in `action_required` pending a maintainer's manual approval (external-contributor gate), which I don't have permission to grant myself | `b7438f1` |
+| 2026-08-04 | (self-initiated, not maintainer feedback) [Posted a comment](https://github.com/ohcnetwork/care_fe/pull/16473#issuecomment-5186875868) tagging `@nihal467` and `@NikhilA8606`, summarizing the fix and asking one of them to approve the held CI run | Awaiting response | `b7438f1` |
 
 ### Acceptance Criteria (Phase IV)
 
