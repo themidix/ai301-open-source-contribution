@@ -358,6 +358,35 @@ Before implementing, I validated the original solution plan against the actual `
 6. **Docs** — Frank!Manual update with a Heinenoord-style worked example.
 7. **Process** — add a `RELEASES.md` entry under "Upcoming" per `CONTRIBUTING.md`; confirm copyright header years on touched files.
 
+### Pull Request Status (Phase IV)
+
+- **PR:** [#11310](https://github.com/frankframework/frankframework/pull/11310), draft, against `master` (the repo's default branch). Still genuinely draft — not "ready for review dressed up as draft" — because of the real open design question below.
+- **CI status:** all green. `Build and Test Maven Artifacts on JDK` (the full Maven build, including the `larva` module's own test suite) passed in 46m50s, along with `Codacy`, `CodeFactor`, `CodeQL`, `SonarCloud`, and `codecov` — verified via `gh pr checks 11310`.
+- **Review status:** no PR-level reviews yet (`gh api .../pulls/11310/reviews` returns empty) and no reviewers/assignees were set on the PR itself — verified directly via the API before assuming otherwise. The real, substantive engagement so far has all happened on the linked issue thread (#4739), not the PR.
+- **Fixed during this phase:** restructured the PR description to follow the project's actual `.github/pull_request_template.md` (`## Changes` + the project's own Pull Request Checklist, filled in honestly — several items like FF! Reference/Javadoc/Docs updates and the migration-notes items are left unchecked because they're genuinely not done yet), added a program-required `## Acceptance Criteria` section with real, verifiable evidence (the CI run link) instead of an unfilled checklist, and added `@nielsm5` as an explicit review request in the description — the specific maintainer who gave the design feedback this PR is built on, since no formal reviewer was assigned and I don't have write access to this repo to request one through GitHub's reviewer UI.
+
+### Maintainer Feedback Log (Phase IV)
+
+| Date | Feedback | Response | Commit |
+| --- | --- | --- | --- |
+| 2026-07-06 | `nielsm5` (maintainer, on issue #4739): prefers an expression-based wait condition (`waitfor.xPath=...`) over a full-content match, and links prior related design discussion (#10798) | Agreed and redesigned around expressions before implementing; confirmed in a [follow-up comment](https://github.com/frankframework/frankframework/issues/4739#issuecomment-4976264913) | — (design phase, predates implementation commits) |
+| — | No PR-level review has landed yet — `gh api repos/frankframework/frankframework/pulls/11310/reviews` returns an empty list as of this writing | N/A | — |
+| 2026-08-04 | (self-initiated, not maintainer feedback) Restructured the PR description to the project's template, added a real Acceptance Criteria section, and `@`-mentioned `nielsm5` directly in the PR asking for a read on the step-property-vs-loop-syntax design question before this comes out of draft | Awaiting response | — |
+
+### Learnings & Reflections (Phase IV)
+
+#### Technical Gains
+
+The most concrete technical lesson from this contribution came from real build tooling, not the design itself: after implementation, Codacy's PMD `NPathComplexity` check flagged the extracted `computeComparison()` at 294 against a 200 threshold, which forced learning to read NPath complexity as a signal about _branch-path explosion_, not just line count — the fix wasn't shortening the method, it was splitting genuinely independent branches (`jsonPrettyOrOriginal()`, `compareXml()`, `compareText()`) into their own methods. Separately, a test that flaked exactly once (`testRetriesUntilXPathExpressionMatches`) taught a subtler lesson: a tight `waitfor.timeout` in a test can fail for a reason that has nothing to do with the feature under test — first-use JVM classloading cost (`TransformerPool`/XSLT engine) ate into the deadline. That's a category of flakiness that only shows up under specific conditions (cold JVM, full-suite run) and would have been very easy to misdiagnose as a real retry-logic bug.
+
+#### What I'd Do Differently
+
+I found the strongest "Match" precedent for this design — [#10118](https://github.com/frankframework/frankframework/pull/10118), which already established the exact property-threading pattern (`LarvaActionFactory.getTimeoutMillis()`) this PR's `waitfor.timeout` follows — only while writing up Phase IV documentation, by running `git log` against the specific files this PR touches. That's late: the implementation was already written by then. If I'd run that same file-history check _before_ designing the property-reading mechanism (not just before implementing), I'd have found the existing pattern earlier and either followed it more directly from the start or had a stronger basis to cite when I first asked `nielsm5` to sanity-check the step-property-vs-loop-syntax question, instead of asking that question from the issue text alone.
+
+#### Teachable Insight for Future Cohorts
+
+**Before designing a new mechanism in an unfamiliar codebase, check `git log` on the specific files you're about to touch — not just the issue thread.** The issue text tells you what a maintainer wanted when they filed it; it says nothing about what's been merged into those exact files since. In this case, a completely unrelated PR (fixing a different problem — enforcing max-duration timeouts, not retry-until-match) had already established the exact pattern this feature needed, months after the issue was filed and unmentioned anywhere in its discussion. A five-minute `gh api .../commits?path=...` check against the files in your plan can surface a maintainer-approved precedent that the issue thread alone never will — and following it, rather than reinventing the shape, makes the eventual review conversation shorter.
+
 ### Status
 
 - [x] Repository forked on GitHub
@@ -368,8 +397,13 @@ Before implementing, I validated the original solution plan against the actual `
 - [x] Plan validated against actual source; revised to fix a retry-safety bug and narrow MVP scope (Phase 2.5)
 - [x] Follow-up comment confirming step-property vs. loop-syntax design choice with maintainers
 - [x] Implementation
-- [x] Tests
+- [x] Tests (all passing in CI — see Pull Request Status above)
 - [x] Pull request opened (#11310, draft — pending maintainer feedback on the step-property vs. loop-syntax question)
+- [x] PR description restructured to the project's template with a real Acceptance Criteria section (Phase IV)
+- [x] Reviewer directly requested via `@`-mention in the PR description, since no reviewer was assigned and formal review-request isn't available without write access (Phase IV)
+- [ ] Maintainer review received
+- [ ] Open design question (step properties vs. loop syntax) resolved
+- [ ] PR approved and merged
 
 ---
 
